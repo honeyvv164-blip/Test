@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Malatang Restaurant Floor Plan</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 8px;
+            pointer-events: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        #ui-overlay h1 {
+            margin: 0 0 5px 0;
+            font-size: 20px;
+            color: #e74c3c;
+        }
+        #ui-overlay p {
+            margin: 0;
+            font-size: 13px;
+            color: #ccc;
+        }
+    </style>
+    <!-- โหลด Three.js และ OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="ui-overlay">
+        <h1>ผังร้านหม่าล่าทัง 3D (80 ตร.ม.)</h1>
+        <p>🖱️ คลิกซ้ายค้างแล้วลากเพื่อหมุนมุมมอง</p>
+        <p>🖱️ คลิกขวาค้างเพื่อขยับตำแหน่ง (Pan)</p>
+        <p>🔍 สกรอลล์เมาส์เพื่อซูมเข้า-ออก</p>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        // --- 1. SET UP SCENE, CAMERA, RENDERER ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x222222);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 25, 25);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 0, 0);
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; // ไม่ให้มุมมองจมลงใต้พื้น
+
+        // --- 2. LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        dirLight.position.set(20, 40, 20);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 100;
+        dirLight.shadow.camera.left = -20;
+        dirLight.shadow.camera.right = 20;
+        dirLight.shadow.camera.top = 20;
+        dirLight.shadow.camera.bottom = -20;
+        scene.add(dirLight);
+
+        // --- 3. MATERIALS ---
+        const matFloorMain = new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.3 }); // พื้นกระเบื้องหลัก
+        const matFloorKitchen = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.5 }); // พื้นห้องครัว/ห้องน้ำ
+        const matWallWhite = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.8 }); // ผนังขาว
+        const matWallRed = new THREE.MeshStandardMaterial({ color: 0x990000, roughness: 0.5 }); // สีแดงแบรนด์ร้าน
+        const matTable = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 }); // โต๊ะกินข้าว
+        const matChairRed = new THREE.MeshStandardMaterial({ color: 0xb30000, roughness: 0.6 }); // เบาะเก้าอี้แดง
+        const matCounter = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 }); // เคาน์เตอร์
+        const matStainless = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2 }); // แสตนเลส
+
+        // --- 4. FLOOR ---
+        // พื้นโซนบริการหลัก (Main Dining)
+        const mainFloorGeo = new THREE.BoxGeometry(16, 0.2, 14);
+        const mainFloor = new THREE.Mesh(mainFloorGeo, matFloorMain);
+        mainFloor.position.set(-2, -0.1, 0);
+        mainFloor.receiveShadow = true;
+        scene.add(mainFloor);
+
+        // พื้นโซนหลังบ้าน / ห้องน้ำ (Kitchen & Restroom)
+        const backFloorGeo = new THREE.BoxGeometry(6, 0.2, 14);
+        const backFloor = new THREE.Mesh(backFloorGeo, matFloorKitchen);
+        backFloor.position.set(9, -0.1, 0);
+        backFloor.receiveShadow = true;
+        scene.add(backFloor);
+
+        // --- 5. WALL BUILDER HELPER ---
+        function createWall(x, z, width, depth, height = 2.5, material = matWallWhite) {
+            const geo = new THREE.BoxGeometry(width, height, depth);
+            const wall = new THREE.Mesh(geo, material);
+            wall.position.set(x, height / 2, z);
+            wall.castShadow = true;
+            wall.receiveShadow = true;
+            scene.add(wall);
+            return wall;
+        }
+
+        // ผนังรอบนอกร้าน
+        createWall(-10.1, 0, 0.2, 14, 2.5, matWallRed); // ผนังซ้าย
+        createWall(0, -7.1, 20.4, 0.2, 2.5, matWallRed); // ผนังหลัง
+        createWall(12.1, 0, 0.2, 14, 2.5, matWallWhite); // ผนังขวา
+        
+        // ผนังหน้าบ้าน (มีช่องประตูทางเข้า)
+        createWall(-6, 7.1, 8.4, 0.2, 2.5, matWallWhite);
+        createWall(6, 7.1, 12.4, 0.2, 2.5, matWallWhite);
+
+        // ผนังกั้นกั้นโซนหลังบ้าน / ห้องเก็บของ / ห้องน้ำ
+        createWall(6, -0.5, 0.2, 13.2, 2.5, matWallWhite); // ผนังกั้นห้องครัว/ห้องน้ำ จากโซนทานอาหาร
+        createWall(3, -5.5, 6, 0.2, 2.5, matWallRed); // ผนังห้องเก็บของ
+        createWall(9, -4, 6, 0.2, 2.5, matWallWhite); // ผนังภายในกั้นห้องน้ำ
+
+        // --- 6. FURNITURE CREATORS ---
+
+        // สร้างชุดโต๊ะ + เก้าอี้ 4 ตัว
+        function createTable4(x, z) {
+            const group = new THREE.Group();
+            
+            // ตัวโต๊ะ
+            const tGeo = new THREE.BoxGeometry(2, 0.1, 2);
+            const table = new THREE.Mesh(tGeo, matTable);
+            table.position.y = 1;
+            table.castShadow = true;
+            group.add(table);
+
+            // ขาโต๊ะ
+            const legGeo = new THREE.CylinderGeometry(0.05, 0.05, 1);
+            const leg = new THREE.Mesh(legGeo, matCounter);
+            leg.position.y = 0.5;
+            leg.castShadow = true;
+            group.add(leg);
+
+            // เตาหม่าล่าบนโต๊ะ (4 จุด)
+            for(let i = -0.4; i <= 0.4; i += 0.8) {
+                for(let j = -0.4; j <= 0.4; j += 0.8) {
+                    const stoveGeo = new THREE.BoxGeometry(0.35, 0.02, 0.35);
+                    const stove = new THREE.Mesh(stoveGeo, matCounter);
+                    stove.position.set(i, 1.05, j);
+                    group.add(stove);
+                }
+            }
+
+            // เก้าอี้ 4 ตัว
+            const chairPositions = [
+                {x: -1.3, z: 0, r: Math.PI/2}, {x: 1.3, z: 0, r: -Math.PI/2},
+                {x: 0, z: -1.3, r: 0}, {x: 0, z: 1.3, r: Math.PI}
+            ];
+
+            chairPositions.forEach(p => {
+                const chairGroup = new THREE.Group();
+                const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.6), matChairRed);
+                seat.position.y = 0.6;
+                const back = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.1), matChairRed);
+                back.position.set(0, 0.9, -0.25);
+                
+                chairGroup.add(seat, back);
+                chairGroup.position.set(p.x, 0, p.z);
+                chairGroup.rotation.y = p.r;
+                group.add(chairGroup);
+            });
+
+            group.position.set(x, 0, z);
+            scene.add(group);
+        }
+
+        // สร้างชุดโต๊ะโซฟาติดผนังซ้าย (ที่นั่งอินโทรเวิร์ต/โต๊ะเดี่ยว-คู่)
+        function createWallBooth(x, z) {
+            const group = new THREE.Group();
+            
+            // ฉากกั้น
+            const dividerGeo = new THREE.BoxGeometry(1.6, 1.4, 0.1);
+            const divider = new THREE.Mesh(dividerGeo, matWallRed);
+            divider.position.set(0, 0.7, 0);
+            group.add(divider);
+
+            // โต๊ะ
+            const tGeo = new THREE.BoxGeometry(1.2, 0.1, 1.2);
+            const table = new THREE.Mesh(tGeo, matTable);
+            table.position.set(0, 0.9, -0.8);
+            group.add(table);
+
+            // เบาะนั่ง
+            const seatGeo = new THREE.BoxGeometry(1.2, 0.5, 0.6);
+            const seat = new THREE.Mesh(seatGeo, matChairRed);
+            seat.position.set(0, 0.25, -1.4);
+            group.add(seat);
+
+            group.position.set(x, 0, z);
+            scene.add(group);
+        }
+
+        // --- 7. PLACE OBJECTS BASED ON LAYOUT ---
+
+        // 1. โซนแคชเชียร์ (มุมซ้ายล่าง)
+        const cashier = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.1, 1.2), matWallRed);
+        cashier.position.set(-8, 0.55, 5);
+        scene.add(cashier);
+
+        // 2. โซนตักอาหาร (ด้านบน)
+        const foodStation = new THREE.Mesh(new THREE.BoxGeometry(6, 1.2, 1.8), matStainless);
+        foodStation.position.set(-2, 0.6, -5.8);
+        scene.add(foodStation);
+
+        // 3. เครื่องดื่ม (มุมซ้ายบน)
+        const drinkStation = new THREE.Mesh(new THREE.BoxGeometry(2, 1.4, 1.2), matCounter);
+        drinkStation.position.set(-8.5, 0.7, -5.8);
+        scene.add(drinkStation);
+
+        // 4. ที่นั่งโซนซ้าย (แบบอินโทรเวิร์ต / พาร์ทิชัน)
+        for(let z = -3.5; z <= 3.5; z += 2.3) {
+            createWallBooth(-8.8, z);
+        }
+
+        // 5. โต๊ะตรงกลาง (กลุ่ม 4-8 คน)
+        createTable4(-3.5, -2);
+        createTable4(-3.5, 2.5);
+        createTable4(1.5, -2);
+        createTable4(1.5, 2.5);
+
+        // 6. โซนรับอาหารเอง / บาร์น้ำจิ้ม (มุมขวาบนของโซนบริการ)
+        const sauceBar = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1, 1), matCounter);
+        sauceBar.position.set(4, 0.5, 5.5);
+        scene.add(sauceBar);
+
+        // 7. สุขภัณฑ์ห้องน้ำ (โซนขวา)
+        const toilet1 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.8), matTable);
+        toilet1.position.set(10.5, 0.4, 3);
+        scene.add(toilet1);
+
+        const toilet2 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.8), matTable);
+        toilet2.position.set(10.5, 0.4, 0);
+        scene.add(toilet2);
+
+        // --- 8. RESIZE & ANIMATION LOOP ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
